@@ -1,0 +1,45 @@
+{
+  "_说明": "复制成 config.json 后填写。程序首次启动会自动帮你复制一份。",
+
+  "backend": "text",
+
+  "api": {
+    "base_url": "https://api.deepseek.com",
+    "api_key": "",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "model": "deepseek-chat",
+    "temperature": 0,
+    "max_tokens": 1000
+  },
+
+  "vision": {
+    "model": "claude-sonnet-5",
+    "api_key": ""
+  },
+
+  "ocr": {
+    "min_confidence": 0.5,
+    "upscale": 2
+  },
+
+  "region": null,
+  "panel_geometry": "460x560+40+40",
+  "panel_alpha": 0.97,
+  "show_region_outline": true,
+  "show_ocr_text": true,
+
+  "poll_interval": 0.25,
+  "diff_threshold": 0.012,
+  "stable_frames": 2,
+  "min_gap": 0.8,
+
+  "hotkeys": {
+    "toggle_ocr": "f6",
+    "toggle_panel": "f7",
+    "toggle_pause": "f8",
+    "redo": "f9",
+    "reselect": "f10",
+    "toggle_outline": "f11",
+    "quit": "f12"
+  }
+}

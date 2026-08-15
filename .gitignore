@@ -1,0 +1,26 @@
+# 真实配置里有 API key 和你的屏幕坐标，绝不要提交
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# OCR 模型缓存
+.rapidocr/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 运行时产物
+*.log
+screenshots/

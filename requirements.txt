@@ -1,0 +1,10 @@
+# 必需
+mss>=9.0
+pillow>=9.0
+numpy>=1.20
+keyboard>=0.13
+rapidocr-onnxruntime>=1.3   # 本地 OCR，自带中英文模型
+openai>=1.40                # 调 DeepSeek 等 OpenAI 兼容接口
+
+# 只有 backend 设成 "vision"（截图直接给多模态模型）时才需要
+anthropic>=0.40
