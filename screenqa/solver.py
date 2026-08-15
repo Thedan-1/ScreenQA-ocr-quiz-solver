@@ -86,7 +86,10 @@ class Solver(threading.Thread):
         if self.backend == "vision":
             from anthropic import Anthropic
             key = self.cfg.get("vision", {}).get("api_key") or None
-            self._client = Anthropic(api_key=key) if key else Anthropic()
+            vis = self.cfg.get("vision", {})
+            timeout = float(vis.get("timeout", 60))
+            self._client = (Anthropic(api_key=key, timeout=timeout) if key
+                            else Anthropic(timeout=timeout))
         else:
             from openai import OpenAI
             api = self.cfg.get("api", {})
@@ -95,8 +98,13 @@ class Solver(threading.Thread):
                 raise RuntimeError(
                     u"还没填 API key。打开 config.json，把 api.api_key 填上，"
                     u"或设置环境变量 DEEPSEEK_API_KEY。")
-            self._client = OpenAI(api_key=key,
-                                  base_url=api.get("base_url") or None)
+            # 必须显式设超时：SDK 默认 600 秒，一次卡住的请求会把整个
+            # solver 线程堵死十分钟，后面的题全都排不上。
+            self._client = OpenAI(
+                api_key=key,
+                base_url=api.get("base_url") or None,
+                timeout=float(api.get("timeout", 30)),
+                max_retries=int(api.get("max_retries", 1)))
         return self._client
 
     # ---------- 任务 ----------

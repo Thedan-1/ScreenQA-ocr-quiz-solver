@@ -43,22 +43,37 @@ DEFAULTS = {
         "model": "deepseek-chat",
         "temperature": 0,
         "max_tokens": 1000,
+        "timeout": 30,        # 秒。别用 SDK 默认的 600，卡一次堵十分钟
+        "max_retries": 1,
     },
-    "vision": {"model": "claude-sonnet-5", "api_key": ""},
+    "vision": {"model": "claude-sonnet-5", "api_key": "", "timeout": 60},
     "ocr": {"min_confidence": 0.5, "upscale": 2},
 
     "region": None,
-    "panel_geometry": "460x560+40+40",
-    "panel_alpha": 0.97,
-    "show_region_outline": True,   # 常驻取景框，截图时会闪绿
-    "show_ocr_text": True,         # 面板底部显示识别到的原文
 
+    # --- 面板外观 ---
+    "panel_geometry": "390x430+40+40",
+    "panel_alpha": 0.95,
+    "answer_only": False,          # 只显示【答案】，不显示题目和解析
+    "click_through": False,        # 面板不接收鼠标，点击穿透到下面的程序
+    "fade_after": 0,               # 秒；>0 时静置这么久后面板自动变淡
+    "fade_alpha": 0.45,
+    "show_ocr_text": False,        # 识别原文默认收起（F6 调出）
+    "show_help": False,            # 热键条默认收起（F1 调出）
+    "show_region_outline": True,   # 常驻取景框，截图时闪绿
+
+    # --- 检测与性能 ---
     "poll_interval": 0.25,
     "diff_threshold": 0.012,
     "stable_frames": 2,
     "min_gap": 0.8,
+    "fast_probe": True,            # 空闲时只抓中间横带，省约 40% 开销
+    "full_every": 8,               # 每隔几拍强制抓一次全幅兜底
 
     "hotkeys": {
+        "toggle_help": "f1",
+        "toggle_answer_only": "f3",
+        "toggle_click_through": "f4",
         "toggle_ocr": "f6",
         "toggle_panel": "f7",
         "toggle_pause": "f8",
@@ -201,19 +216,22 @@ class App(object):
                 print("没有框选区域，退出。")
                 return
 
-        self.panel = ui.AnswerPanel(self.root, self.cfg["panel_geometry"],
-                                    self.cfg["panel_alpha"],
-                                    self.cfg["show_ocr_text"])
+        self.panel = ui.AnswerPanel(
+            self.root, self.cfg["panel_geometry"], self.cfg["panel_alpha"],
+            show_ocr=self.cfg["show_ocr_text"], show_help=self.cfg["show_help"],
+            answer_only=self.cfg["answer_only"],
+            fade_after=self.cfg["fade_after"], fade_alpha=self.cfg["fade_alpha"])
+        if self.cfg["click_through"]:
+            self.panel.toggle_click_through()
         if self.cfg["show_region_outline"]:
             self.indicator = ui.RegionIndicator(self.root, region)
 
-        self.panel.set_stage(u"● 启动中…", ui.DIM)
-        self.panel.set_meta(u"尚未截图")
+        self.panel.set_stage(u"● 监听中 · 尚未截图", ui.DIM)
         self.panel.set_text(
-            u"监视区域：%d×%d\n\n"
-            u"屏幕上那圈细线就是监视范围。\n"
-            u"每次真的截图，它会闪一下绿色。\n\n"
-            u"翻到题目后会自动识别，不用再操作本程序。"
+            u"监视区域 %d×%d\n\n"
+            u"屏幕上那圈细线就是监视范围，真截图时闪绿。\n"
+            u"翻到题目会自动识别，不用再操作本程序。\n\n"
+            u"按 F1 看全部热键。"
             % (region["width"], region["height"]))
 
         if LOAD_ERROR:
@@ -250,6 +268,8 @@ class App(object):
             diff_threshold=self.cfg["diff_threshold"],
             stable_frames=self.cfg["stable_frames"],
             min_gap=self.cfg["min_gap"],
+            fast_probe=self.cfg["fast_probe"],
+            full_every=self.cfg["full_every"],
         )
         self.watcher.start()
 
@@ -269,6 +289,9 @@ class App(object):
     def bind_hotkeys(self):
         hk = self.cfg["hotkeys"]
         actions = {
+            hk["toggle_help"]: lambda: self.post("toggle_help"),
+            hk["toggle_answer_only"]: lambda: self.post("toggle_answer_only"),
+            hk["toggle_click_through"]: lambda: self.post("toggle_click_through"),
             hk["toggle_ocr"]: lambda: self.post("toggle_ocr"),
             hk["toggle_panel"]: lambda: self.post("toggle_panel"),
             hk["toggle_pause"]: lambda: self.post("toggle_pause"),
@@ -298,12 +321,11 @@ class App(object):
         if self.indicator:
             self.indicator.flash()          # 屏幕上闪一下，明确告诉你截了
         w, h = img.size
-        self.panel.set_counter(u"#%d" % self.count)
-        self.panel.set_stage(u"● 已截图", ui.GREEN)
-        self.panel.set_meta(u"最近截图 %s · %d×%d · 本次共 %d 张"
-                            % (time.strftime("%H:%M:%S"), w, h, self.count),
-                            ui.GREEN)
+        # 截图的时间、尺寸、累计张数都压进这一行，不再单独占一块
+        self.panel.set_counter(u"#%d · %s" % (self.count, time.strftime("%H:%M:%S")))
+        self.panel.set_stage(u"● 已截图 %d×%d" % (w, h), ui.GREEN)
         self.panel.clear()
+        self.panel.wake()
         self.solver.submit(img)
 
     # ---------- 后端阶段 ----------
@@ -359,8 +381,22 @@ class App(object):
 
     # ---------- 热键动作 ----------
     def _on_toggle_ocr(self):
-        on = self.panel.toggle_ocr()
-        self.cfg["show_ocr_text"] = on
+        self.cfg["show_ocr_text"] = self.panel.toggle_ocr()
+
+    def _on_toggle_help(self):
+        self.cfg["show_help"] = self.panel.toggle_help()
+
+    def _on_toggle_answer_only(self):
+        on = self.panel.toggle_answer_only()
+        self.cfg["answer_only"] = on
+        self.panel.set_stage(u"● 只看答案" if on else u"● 显示完整作答", ui.ACCENT)
+
+    def _on_toggle_click_through(self):
+        on = self.panel.toggle_click_through()
+        self.cfg["click_through"] = on
+        # 穿透时鼠标拖不动面板，这点得说清楚
+        self.panel.set_stage(u"● 点击穿透（拖不动，F4 关）" if on
+                             else u"● 已恢复鼠标操作", ui.ACCENT)
 
     def _on_toggle_panel(self):
         self.panel.toggle()
@@ -376,13 +412,13 @@ class App(object):
     def _on_toggle_pause(self):
         self.watcher.paused = not self.watcher.paused
         if self.watcher.paused:
-            self.panel.set_stage(u"● 已暂停（F8 继续）", ui.YELLOW)
-            self.panel.set_meta(u"已暂停，不会再截图", ui.YELLOW)
+            self.panel.set_stage(u"● 已暂停，不会再截图（F8 继续）", ui.YELLOW)
+            self.panel.wake()
             if self.indicator:
                 self.indicator.paused()
         else:
-            self.panel.set_stage(u"● 已恢复监听", ui.ACCENT)
-            self.panel.set_meta(u"监听中 · 本次共截图 %d 张" % self.count)
+            self.panel.set_stage(u"● 已恢复监听 · 累计 %d 张" % self.count,
+                                 ui.ACCENT)
             if self.indicator:
                 self.indicator.idle()
 
