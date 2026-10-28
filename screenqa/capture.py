@@ -150,9 +150,14 @@ class RegionWatcher(threading.Thread):
 
     def _tick(self, sct):
         self.stats["ticks"] += 1
-        forced = self._force_evt.is_set()
-        if self.paused and not forced:
+        # Pausing must be a hard capture boundary. Clear a queued manual
+        # request as well, otherwise an F9 pressed while paused would be
+        # replayed on the next tick and still grab the screen.
+        if self.paused:
+            self._force_evt.clear()
             return
+
+        forced = self._force_evt.is_set()
 
         if forced:
             self._force_evt.clear()
